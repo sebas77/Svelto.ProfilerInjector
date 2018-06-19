@@ -3,3 +3,5 @@ Svelto.Profiler/PixWrapperDLL/packages/WinPixEventRuntime.1.0.180612001/
 Svelto.Profiler/PixWrapperDLL/x64/Release/PixWrapperUnity.tlog/CL.write.1.tlog
 Svelto.Profiler/PixWrapperDLL/x64/
 Svelto.Profiler/PixWrapperDLL/PixWrapperUnity.vcxproj.user
+PixWrapperDLL/x64/
+PixWrapperDLL/.vs/
