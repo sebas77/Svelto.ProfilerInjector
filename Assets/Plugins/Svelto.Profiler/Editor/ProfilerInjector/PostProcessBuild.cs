@@ -58,149 +58,157 @@ public static class AssemblyPostProcessor
             // Lock assemblies while they may be altered
             EditorApplication.LockReloadAssemblies();
 
-            // This will hold the paths to all the assemblies that will be processed
-            var assemblyPaths = new HashSet<string>();
-            // This will hold the search directories for the resolver
-            var assemblySearchDirectories = new HashSet<string>();
-            // Create resolver
-            var assemblyResolver = new DefaultAssemblyResolver();
-
-            if (additionalFolder == string.Empty)
+            try
             {
-                // Add all assemblies in the project to be processed, and add their directory to
-                // the resolver search directories.
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                // This will hold the paths to all the assemblies that will be processed
+                var assemblyPaths = new HashSet<string>();
+                // This will hold the search directories for the resolver
+                var assemblySearchDirectories = new HashSet<string>();
+                // Create resolver
+                var assemblyResolver = new DefaultAssemblyResolver();
+
+                if (additionalFolder == string.Empty)
                 {
-                    // Only process assemblies which are in the project
-
-                    string assemblyLocation = string.Empty;
-
-                    try
+                    // Add all assemblies in the project to be processed, and add their directory to
+                    // the resolver search directories.
+                    foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
                     {
-                        assemblyLocation = assembly.Location;
+                        // Only process assemblies which are in the project
+
+                        string assemblyLocation = string.Empty;
+
+                        try
+                        {
+                            assemblyLocation = assembly.Location;
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.Log("<color=orange>" + assembly.FullName + " " + e.Message + "</color>");
+                        }
+
+                        if (assemblyLocation != string.Empty &&
+                            assemblyLocation.Replace('\\', '/')
+                                            .StartsWith(Application
+                                                       .dataPath.Substring(0, Application.dataPath.Length - 7)))
+                        {
+                            Debug.Log("Adding assembly for patching: " + assembly.Location);
+                            assemblyPaths.Add(assembly.Location);
+                        }
+
+                        // But always add the assembly folder to the search directories
+                        try
+                        {
+                            if (assemblyLocation != string.Empty)
+                                assemblySearchDirectories.Add(Path.GetDirectoryName(assembly.Location));
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.Log("Exception while fetching assembly: " + assembly.Location + ", " + e.Message);
+                        }
                     }
-                    catch (Exception e)
+
+                    // Add all directories found in the project folder
+                    foreach (string searchDirectory in assemblySearchDirectories)
                     {
-                        Debug.Log("<color=orange>" + assembly.FullName + " " + e.Message + "</color>");
+                        assemblyResolver.AddSearchDirectory(searchDirectory);
                     }
 
-                    if (assemblyLocation != string.Empty &&
-                        assemblyLocation.Replace('\\', '/')
-                                        .StartsWith(Application.dataPath.Substring(0, Application.dataPath.Length - 7)))
-                    {
-                        Debug.Log("Adding assembly for patching: " + assembly.Location);
-                        assemblyPaths.Add(assembly.Location);
-                    }
-
-                    // But always add the assembly folder to the search directories
-                    try
-                    {
-                        if (assemblyLocation != string.Empty)
-                            assemblySearchDirectories.Add(Path.GetDirectoryName(assembly.Location));
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.Log("Exception while fetching assembly: " + assembly.Location + ", " + e.Message);
-                    }
-                }
-                
-                // Add all directories found in the project folder
-                foreach (string searchDirectory in assemblySearchDirectories)
-                {
-                    assemblyResolver.AddSearchDirectory(searchDirectory);
-                }
-
-                // Add path to the Unity managed dlls
-                assemblyResolver.AddSearchDirectory(Path.GetDirectoryName(EditorApplication.applicationPath) +
-                                                    "/Data/Managed");
-            }
-            else
-            {
-                string path = additionalFolder;
-
-                foreach (string dll in Directory.GetFiles(path, "*.dll"))
-                    assemblyPaths.Add(dll);
-
-                assemblyResolver.AddSearchDirectory(path);
-            }
-
-            // Create reader parameters with resolver
-            var readerParameters = new ReaderParameters();
-            readerParameters.AssemblyResolver = assemblyResolver;
-
-            // Create writer parameters
-            var writerParameters = new WriterParameters();
-
-            // Process any assemblies which need it
-            foreach (string assemblyPath in assemblyPaths)
-            {
-                if (assemblyPath.Contains("Cecil") || assemblyPath.Contains("Editor"))
-                {
-                    Debug.Log("<color=yellow>Skipping:</color> " + assemblyPath);
-                    continue;
-                }
-
-                // mdbs have the naming convention myDll.dll.mdb whereas pdbs have myDll.pdb
-                string mdbPath = assemblyPath + ".mdb";
-                string pdbPath = assemblyPath.Substring(0, assemblyPath.Length - 3) + "pdb";
-
-                // Figure out if there's an pdb/mdb to go with it
-                if (File.Exists(pdbPath))
-                {
-                    Debug.Log("<color=green>PDB found</color> " + assemblyPath + "...");
-                    File.SetAttributes(pdbPath, FileAttributes.Normal);
-                    readerParameters.ReadSymbols = true;
-                    readerParameters.SymbolReaderProvider = new PdbReaderProvider();
-                    writerParameters.WriteSymbols = true;
-                    // pdb written out as mdb, as mono can't work with pdbs
-                    writerParameters.SymbolWriterProvider = new MdbWriterProvider();
-                }
-                else 
-                if (File.Exists(mdbPath))
-                {
-                    Debug.Log("<color=green>MDB found</color> " + assemblyPath + "...");
-                    File.SetAttributes(mdbPath, FileAttributes.Normal);
-                    readerParameters.ReadSymbols = true;
-                    readerParameters.SymbolReaderProvider = new MdbReaderProvider();
-                    writerParameters.WriteSymbols = true;
-                    writerParameters.SymbolWriterProvider = new MdbWriterProvider();
+                    // Add path to the Unity managed dlls
+                    assemblyResolver.AddSearchDirectory(Path.GetDirectoryName(EditorApplication.applicationPath) +
+                                                        "/Data/Managed");
                 }
                 else
                 {
-                    readerParameters.ReadSymbols = false;
-                    readerParameters.SymbolReaderProvider = null;
-                    writerParameters.WriteSymbols = false;
-                    writerParameters.SymbolWriterProvider = null;
+                    string path = additionalFolder;
+
+                    foreach (string dll in Directory.GetFiles(path, "*.dll"))
+                        assemblyPaths.Add(dll);
+
+                    assemblyResolver.AddSearchDirectory(path);
                 }
 
-                try
+                // Create reader parameters with resolver
+                var readerParameters = new ReaderParameters();
+                readerParameters.AssemblyResolver = assemblyResolver;
+
+                // Create writer parameters
+                var writerParameters = new WriterParameters();
+
+                // Process any assemblies which need it
+                foreach (string assemblyPath in assemblyPaths)
                 {
-                    // Process it if it hasn't already
-                    Debug.Log("<color=green>Processing</color> " + assemblyPath + "...");
-                    
-                    // Read assembly
-                    var assembly = AssemblyDefinition.ReadAssembly(assemblyPath, readerParameters);
-                    
-                    if (ProcessAssembly(assembly))
+                    if (assemblyPath.Contains("Cecil") || assemblyPath.Contains("Editor"))
                     {
-                        File.SetAttributes(assemblyPath, FileAttributes.Normal);
-                        Debug.Log("<color=cyan>Writing to</color>  " + assemblyPath + "...");
-                        assembly.Write(assemblyPath, writerParameters);
+                        Debug.Log("<color=yellow>Skipping:</color> " + assemblyPath);
+                        continue;
+                    }
+
+                    // mdbs have the naming convention myDll.dll.mdb whereas pdbs have myDll.pdb
+                    string mdbPath = assemblyPath                                       + ".mdb";
+                    string pdbPath = assemblyPath.Substring(0, assemblyPath.Length - 3) + "pdb";
+
+                    // Figure out if there's an pdb/mdb to go with it
+                    if (File.Exists(mdbPath))
+                    {
+                        
+                        Debug.Log("<color=green>MDB found</color> " + assemblyPath + "...");
+                        File.SetAttributes(mdbPath, FileAttributes.Normal);
+                        readerParameters.ReadSymbols          = true;
+                        readerParameters.SymbolReaderProvider = new MdbReaderProvider();
+                        writerParameters.WriteSymbols         = true;
+                        writerParameters.SymbolWriterProvider = new MdbWriterProvider();
+                        
+                    }
+                    else 
+                    if (File.Exists(pdbPath))
+                    {
+                        Debug.Log("<color=green>PDB found</color> " + assemblyPath + "...");
+                        File.SetAttributes(pdbPath, FileAttributes.Normal);
+                        readerParameters.ReadSymbols          = true;
+                        readerParameters.SymbolReaderProvider = new PdbReaderProvider();
+                        writerParameters.WriteSymbols         = true;
+                        // pdb written out as mdb, as mono can't work with pdbs
+                        writerParameters.SymbolWriterProvider = new MdbWriterProvider();
                     }
                     else
                     {
-                        Debug.Log("<color=cyan>Skipping assembly</color>  " + assemblyPath + "...");
+                        readerParameters.ReadSymbols          = false;
+                        readerParameters.SymbolReaderProvider = null;
+                        writerParameters.WriteSymbols         = false;
+                        writerParameters.SymbolWriterProvider = null;
+                    }
+
+                    try
+                    {
+                        // Process it if it hasn't already
+                        Debug.Log("<color=green>Processing</color> " + assemblyPath + "...");
+
+                        // Read assembly
+                        var assembly = AssemblyDefinition.ReadAssembly(assemblyPath, readerParameters);
+
+                        if (ProcessAssembly(assembly))
+                        {
+                            File.SetAttributes(assemblyPath, FileAttributes.Normal);
+                            Debug.Log("<color=cyan>Writing to</color>  " + assemblyPath + "...");
+                            assembly.Write(assemblyPath, writerParameters);
+                        }
+                        else
+                        {
+                            Debug.Log("<color=cyan>Skipping assembly</color>  " + assemblyPath + "...");
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        // Skip writing if any exception occurred
+                        Debug.LogError("Exception while processing assembly: " + assemblyPath + ", " + e.Message);
                     }
                 }
-                catch (Exception e)
-                {
-                    // Skip writing if any exception occurred
-                    Debug.LogError("Exception while processing assembly: " + assemblyPath + ", " + e.Message);
-                }
             }
-
-            // Unlock now that we're done
-            EditorApplication.UnlockReloadAssemblies();
+            finally
+            {
+                // Unlock now that we're done
+                EditorApplication.UnlockReloadAssemblies();
+            }
         }
         
         static bool ProcessAssembly(AssemblyDefinition assembly)

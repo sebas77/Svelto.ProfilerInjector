@@ -1,3 +1,5 @@
+//it works only in debug and with the define USE_PIX
+
 // dllmain.cpp : Defines the entry point for the DLL application.
 #include "stdafx.h"
 #include "pix3.h"
