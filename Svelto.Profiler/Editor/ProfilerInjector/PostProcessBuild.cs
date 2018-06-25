@@ -12,6 +12,7 @@ using UnityEditor;
 using UnityEditor.Callbacks;
 #endif    
 using UnityEngine;
+using UnityEngine.Profiling;
 using Debug = UnityEngine.Debug;
 using FileAttributes = System.IO.FileAttributes;
 using MethodBody = Mono.Cecil.Cil.MethodBody;
@@ -42,7 +43,7 @@ public static class AssemblyPostProcessor
         [MenuItem("Tools/InjectAssembly")]
         public static void ProcessIT()
         {
-            InternalApp();
+            InternalApp(string.Empty);
         }
         
         public static void ProcessIT(string additionalFolder)
@@ -151,8 +152,8 @@ public static class AssemblyPostProcessor
                     readerParameters.ReadSymbols = true;
                     readerParameters.SymbolReaderProvider = new PdbReaderProvider();
                     writerParameters.WriteSymbols = true;
-                    writerParameters.SymbolWriterProvider = new PdbWriterProvider();
                     // pdb written out as mdb, as mono can't work with pdbs
+                    writerParameters.SymbolWriterProvider = new MdbWriterProvider();
                 }
                 else 
                 if (File.Exists(mdbPath))
@@ -232,10 +233,12 @@ public static class AssemblyPostProcessor
                 Debug.Log("Processing module: " + module.FullyQualifiedName);
                 
                 var beginMethod =
-                    module.ImportReference(typeof(SveltoProfiler).GetMethod("BeginSample",
-                                                                      new[] { typeof(string) }));
+                    module.ImportReference(typeof(Profiler).GetMethod("BeginSample",
+                                                                      BindingFlags.Static |
+                                                                      BindingFlags.Public, null,                                                                       
+                                                                      new[] { typeof(string) },null));
                 var endMethod =
-                    module.ImportReference(typeof(SveltoProfiler).GetMethod("EndSample",
+                    module.ImportReference(typeof(Profiler).GetMethod("EndSample",
                                                                       BindingFlags.Static |
                                                                       BindingFlags.Public));
                 
@@ -313,7 +316,7 @@ public static class AssemblyPostProcessor
             FixBranchTargets(lastLeaveInstruction, formallyLastInstruction, body);
         }
 
-        private static void FixBranchTargets(
+         static void FixBranchTargets(
             Instruction lastLeaveInstruction,
             Instruction formallyLastRetInstruction,
             MethodBody body)
